@@ -75,7 +75,7 @@ def compute(country,age,s,co,ca,re,beh,sig,rf):
         'Commodity stress index':int(min(sig['Gold']*0.5+sig['Oil']*0.5,100)),
         'Geopolitical contagion':int(min(sig['fear_composite']*0.7+(1-cm)*30,100)),
         'Demographic pressure':int(demo*100),
-        'Retail capitulation risk':int(min(sp*100*1.35+15,99))}
+        'Retail capitulation risk':int(round(sp*100))}
     contrarian_desc = 'Highest survival rate - and your {:.0f}% cash gives you the firepower to execute.'.format(ca) if ca>=15 else 'Highest survival rate - but your {:.0f}% cash may not be enough when the dip arrives.'.format(ca)
     anxious_desc = 'You hold through crashes - your {:.0f}% cash buffer helps but pre-commitment rules will stop emotional exits.'.format(ca) if ca>=15 else 'Emotional exits cost you 12% vs systematic rebalancers - and your low cash leaves you exposed.'
     am={'I panic-sold everything':('The Panic Seller','You exit at the worst moment. Build a cash buffer of at least 20% as your psychological anchor.'),
@@ -84,7 +84,7 @@ def compute(country,age,s,co,ca,re,beh,sig,rf):
         'I bought the dip':('The Contrarian', contrarian_desc),
         'I was not invested yet':('The Observer','No crash trauma - but entry timing is your critical risk. Define your entry rules now.')}
     al,ad=am.get(beh,('The Holder','Steady under pressure.'))
-    return {'score':score,'label':lbl,'color':col,'stress':int(min(sp*100*1.35+15,99)),'signals':ss,'archetype':al,'arch_desc':ad}
+    return {'score':score,'label':lbl,'color':col,'stress':int(round(sp*100)),'signals':ss,'archetype':al,'arch_desc':ad}
 
 def bar(label,val):
     c='#E24B4A' if val>70 else '#EF9F27' if val>50 else '#1D9E75'
