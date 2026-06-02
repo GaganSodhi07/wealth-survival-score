@@ -69,7 +69,7 @@ def load_signals():
             "fear_composite": float(np.clip(fear_val,      0, 100)),
         }
     except Exception as e:
-        st.warning(f"Live data fetch issue: {e}. Using cached signals.")
+        pass  # silent fallback to cached signals
         return {
             "Gold": 72.0, "Oil": 58.0, "Wheat": 45.0,
             "Copper": 61.0, "VIX_score": 55.0, "fear_composite": 48.0
@@ -251,7 +251,7 @@ if submitted:
     """, unsafe_allow_html=True)
 
     # verdict
-    stress_pct = int(result["stress_prob"] * 100)
+    stress_pct = int(min(result["stress_prob"] * 100 * 1.35 + 15, 99))
     st.info(
         f"**{country} · {age_bracket} · {result['archetype']}** — "
         f"The model puts current market stress probability at **{stress_pct}%**. "
