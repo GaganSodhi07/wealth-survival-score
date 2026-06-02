@@ -1,0 +1,1 @@
+{"all_features": ["VIX_score", "Gold", "Oil", "fear_composite", "Wheat", "Copper"], "traditional_features": ["VIX_score", "Gold", "Oil"], "alternative_features": ["fear_composite", "Wheat", "Copper"]}
