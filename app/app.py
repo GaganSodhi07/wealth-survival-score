@@ -76,11 +76,13 @@ def compute(country,age,s,co,ca,re,beh,sig,rf):
         'Geopolitical contagion':int(min(sig['fear_composite']*0.7+(1-cm)*30,100)),
         'Demographic pressure':int(demo*100),
         'Retail capitulation risk':int(min(sp*100*1.35+15,99))}
-    am={'I panic-sold everything':('The Panic Seller','You exit at the worst moment. Pre-commitment rules are your fix.'),
-        'I sold some, held some':('The Reluctant Holder','You partially protect yourself but leave recovery gains on the table.'),
-        'I held and watched in pain':('The Anxious Holder','Emotional exits cost you 12% vs systematic rebalancers.'),
-        'I bought the dip':('The Contrarian','Highest survival rate - but only if you have the liquidity.'),
-        'I was not invested yet':('The Observer','No crash trauma - but entry timing is your critical risk.')}
+    contrarian_desc = 'Highest survival rate - and your {:.0f}% cash gives you the firepower to execute.'.format(ca) if ca>=15 else 'Highest survival rate - but your {:.0f}% cash may not be enough when the dip arrives.'.format(ca)
+    anxious_desc = 'You hold through crashes - your {:.0f}% cash buffer helps but pre-commitment rules will stop emotional exits.'.format(ca) if ca>=15 else 'Emotional exits cost you 12% vs systematic rebalancers - and your low cash leaves you exposed.'
+    am={'I panic-sold everything':('The Panic Seller','You exit at the worst moment. Build a cash buffer of at least 20% as your psychological anchor.'),
+        'I sold some, held some':('The Reluctant Holder','You partially protect yourself but leave recovery gains on the table. A written rebalancing rule fixes this.'),
+        'I held and watched in pain':('The Anxious Holder', anxious_desc),
+        'I bought the dip':('The Contrarian', contrarian_desc),
+        'I was not invested yet':('The Observer','No crash trauma - but entry timing is your critical risk. Define your entry rules now.')}
     al,ad=am.get(beh,('The Holder','Steady under pressure.'))
     return {'score':score,'label':lbl,'color':col,'stress':int(min(sp*100*1.35+15,99)),'signals':ss,'archetype':al,'arch_desc':ad}
 
