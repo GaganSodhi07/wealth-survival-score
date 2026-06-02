@@ -1,335 +1,160 @@
-# v4 deployed 2026-06-02 08:26:03
-
 import streamlit as st
 import pandas as pd
 import numpy as np
 import pickle
-import json
 import os
 import yfinance as yf
-from pytrends.request import TrendReq
 import plotly.graph_objects as go
 import time
-from datetime import datetime
 
-st.set_page_config(
-    page_title="Wealth Survival Score",
-    page_icon="📊",
-    layout="centered"
-)
-
+st.set_page_config(page_title='Wealth Survival Score', page_icon='📊', layout='centered')
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 @st.cache_resource
-def load_models():
-    rf_path = os.path.join(BASE_DIR, "..", "models", "rf_model.pkl")
-    with open(rf_path, "rb") as f:
-        rf = pickle.load(f)
-    return rf
+def load_rf():
+    with open(os.path.join(BASE_DIR,'..','models','rf_model.pkl'),'rb') as f:
+        return pickle.load(f)
 
 @st.cache_data(ttl=3600)
 def load_signals():
-    """Fetch live signals — cached for 1 hour so app stays fast."""
     try:
-        tickers = {"Gold":"GC=F","Oil":"CL=F","Wheat":"ZW=F","Copper":"HG=F","VIX":"^VIX"}
-        data = {}
-        for name, ticker in tickers.items():
-            df = yf.download(ticker, period="6mo", interval="1mo",
-                             progress=False, auto_adjust=True)
-            if isinstance(df.columns, pd.MultiIndex):
-                df.columns = [col[0] for col in df.columns]
-            if not df.empty:
-                data[name] = float(df["Close"].iloc[-1])
+        tickers={'Gold':'GC=F','Oil':'CL=F','Wheat':'ZW=F','Copper':'HG=F','VIX':'^VIX'}
+        data={}
+        for name,ticker in tickers.items():
+            df=yf.download(ticker,period='6mo',interval='1mo',progress=False,auto_adjust=True)
+            if isinstance(df.columns,pd.MultiIndex): df.columns=[c[0] for c in df.columns]
+            if not df.empty: data[name]=float(df['Close'].iloc[-1])
+        try:
+            from pytrends.request import TrendReq
+            pt=TrendReq(hl='en-US',tz=360)
+            pt.build_payload(['stock market crash'],timeframe='today 3-m',geo='',gprop='')
+            td=pt.interest_over_time()
+            fear=float(td['stock market crash'].iloc[-1]) if not td.empty else 35.0
+        except:
+            fear=35.0
+        master=pd.read_csv(os.path.join(BASE_DIR,'..','data','raw','master_signals.csv'),index_col=0,parse_dates=True)
+        def norm(v,c):
+            mn,mx=master[c].min(),master[c].max()
+            return float(np.clip((v-mn)/(mx-mn)*100,0,100))
+        return {'Gold':norm(data.get('Gold',1900),'Gold'),'Oil':norm(data.get('Oil',80),'Oil'),
+                'Wheat':norm(data.get('Wheat',600),'Wheat'),'Copper':norm(data.get('Copper',4.0),'Copper'),
+                'VIX_score':norm(data.get('VIX',20),'VIX_score'),'fear_composite':float(np.clip(fear,0,100))}
+    except:
+        return {'Gold':72.0,'Oil':58.0,'Wheat':45.0,'Copper':61.0,'VIX_score':55.0,'fear_composite':48.0}
 
-        pytrends = TrendReq(hl="en-US", tz=360)
-        pytrends.build_payload(
-            ["stock market crash"],
-            timeframe="today 3-m", geo="", gprop=""
-        )
-        trend_df = pytrends.interest_over_time()
-        fear_val = float(trend_df["stock market crash"].iloc[-1]) if not trend_df.empty else 30.0
+def compute(country,age,s,co,ca,re,beh,sig,rf):
+    feats=['VIX_score','Gold','Oil','fear_composite','Wheat','Copper']
+    X=np.array([[sig[f] for f in feats]])
+    pr=rf.predict_proba(X); cl=list(rf.classes_)
+    sp=pr[0][cl.index(1)] if 1 in cl else 0.3
+    cr={'Germany':0.72,'United States':0.58,'United Kingdom':0.63,'India':0.45,'France':0.67,'Japan':0.70,'Brazil':0.38}
+    cm=cr.get(country,0.60)
+    dp={'Germany':1.0,'United States':0.468,'United Kingdom':0.539,'India':0.0,'France':0.632,'Japan':1.0,'Brazil':0.15}
+    demo=dp.get(country,0.5)
+    ms=(1-sp)*100; cs=cm*100; ds=(1-demo)*100
+    mx=max(s,co,ca,re)/100
+    if mx>0.90: als=10
+    elif mx>0.80: als=28
+    elif ca<5: als=32
+    elif ca>=20 and co>=15: als=95
+    elif ca>=15 and co>=10: als=80
+    elif ca>=10 and co>=5: als=65
+    elif ca>=10: als=52
+    else: als=42
+    bs={'I panic-sold everything':10,'I sold some, held some':35,'I held and watched in pain':55,'I bought the dip':90,'I was not invested yet':48}
+    bsc=bs.get(beh,50)
+    ap={'18 - 25':0,'26 - 35':0,'36 - 45':-3,'46 - 55':-8,'56 - 65':-15,'65+':-22}
+    apen=ap.get(age,0)
+    raw=ms*0.25+cs*0.20+ds*0.15+als*0.30+bsc*0.10
+    score=int(np.clip(raw+apen,5,98))
+    if score>=75: lbl,col='Strong resilience','#1D9E75'
+    elif score>=55: lbl,col='Moderate resilience','#EF9F27'
+    elif score>=35: lbl,col='Fragile','#E24B4A'
+    else: lbl,col='High vulnerability','#C0392B'
+    ss={'Central bank language drift':int(min(sig['VIX_score']*0.6+sp*40,100)),
+        'Commodity stress index':int(min(sig['Gold']*0.5+sig['Oil']*0.5,100)),
+        'Geopolitical contagion':int(min(sig['fear_composite']*0.7+(1-cm)*30,100)),
+        'Demographic pressure':int(demo*100),
+        'Retail capitulation risk':int(min(sp*100*1.35+15,99))}
+    am={'I panic-sold everything':('The Panic Seller','You exit at the worst moment. Pre-commitment rules are your fix.'),
+        'I sold some, held some':('The Reluctant Holder','You partially protect yourself but leave recovery gains on the table.'),
+        'I held and watched in pain':('The Anxious Holder','Emotional exits cost you 12% vs systematic rebalancers.'),
+        'I bought the dip':('The Contrarian','Highest survival rate - but only if you have the liquidity.'),
+        'I was not invested yet':('The Observer','No crash trauma - but entry timing is your critical risk.')}
+    al,ad=am.get(beh,('The Holder','Steady under pressure.'))
+    return {'score':score,'label':lbl,'color':col,'stress':int(min(sp*100*1.35+15,99)),'signals':ss,'archetype':al,'arch_desc':ad}
 
-        from sklearn.preprocessing import MinMaxScaler
-        master = pd.read_csv(
-            os.path.join(BASE_DIR, "..", "data", "raw", "master_signals.csv"),
-            index_col=0, parse_dates=True
-        )
+def bar(label,val):
+    c='#E24B4A' if val>70 else '#EF9F27' if val>50 else '#1D9E75'
+    s='High risk' if val>70 else 'Elevated' if val>50 else 'Stable'
+    st.markdown(f'<div style="margin-bottom:8px"><div style="display:flex;justify-content:space-between;font-size:13px"><span>{label}</span><span style="color:{c};font-weight:500">{s} ({val})</span></div><div style="background:#f0f0f0;border-radius:4px;height:7px"><div style="width:{val}%;background:{c};height:7px;border-radius:4px"></div></div></div>',unsafe_allow_html=True)
 
-        scaler_gold   = (data.get("Gold",  1900) - master["Gold"].min())   / (master["Gold"].max()   - master["Gold"].min())   * 100
-        scaler_oil    = (data.get("Oil",    80)   - master["Oil"].min())    / (master["Oil"].max()    - master["Oil"].min())    * 100
-        scaler_wheat  = (data.get("Wheat",  600)  - master["Wheat"].min())  / (master["Wheat"].max()  - master["Wheat"].min())  * 100
-        scaler_copper = (data.get("Copper", 4.0)  - master["Copper"].min()) / (master["Copper"].max() - master["Copper"].min()) * 100
-        scaler_vix    = (data.get("VIX",    20)   - master["VIX_score"].min()) / (master["VIX_score"].max() - master["VIX_score"].min()) * 100
-
-        return {
-            "Gold":           float(np.clip(scaler_gold,   0, 100)),
-            "Oil":            float(np.clip(scaler_oil,    0, 100)),
-            "Wheat":          float(np.clip(scaler_wheat,  0, 100)),
-            "Copper":         float(np.clip(scaler_copper, 0, 100)),
-            "VIX_score":      float(np.clip(scaler_vix,    0, 100)),
-            "fear_composite": float(np.clip(fear_val,      0, 100)),
-        }
-    except Exception as e:
-        pass  # silent fallback to cached signals
-        return {
-            "Gold": 72.0, "Oil": 58.0, "Wheat": 45.0,
-            "Copper": 61.0, "VIX_score": 55.0, "fear_composite": 48.0
-        }
-
-def compute_score(country, age_bracket, stocks_pct, commodities_pct,
-                  cash_pct, real_estate_pct, behavior, signals, rf_model):
-
-    all_features = ["VIX_score","Gold","Oil","fear_composite","Wheat","Copper"]
-    demo_df = pd.DataFrame([
-        {"country":"Germany",        "demographic_pressure_score":100.0},
-        {"country":"United States",  "demographic_pressure_score":46.8},
-        {"country":"United Kingdom", "demographic_pressure_score":53.9},
-        {"country":"India",          "demographic_pressure_score":0.0},
-        {"country":"France",         "demographic_pressure_score":63.2},
-        {"country":"Japan",          "demographic_pressure_score":100.0},
-        {"country":"Brazil",         "demographic_pressure_score":15.0},
-    ])
-
-    X_input = np.array([[signals[f] for f in all_features]])
-    proba   = rf_model.predict_proba(X_input)
-    classes = list(rf_model.classes_)
-    stress_prob = proba[0][classes.index(1)] if 1 in classes else 0.3
-
-    country_risk = {
-        "Germany":0.72,"United States":0.58,"United Kingdom":0.63,
-        "India":0.45,"France":0.67,"Japan":0.70,"Brazil":0.38
-    }
-    country_modifier = country_risk.get(country, 0.60)
-
-    demo_row      = demo_df[demo_df["country"] == country]
-    demo_pressure = float(demo_row["demographic_pressure_score"].values[0]) / 100 if len(demo_row) > 0 else 0.5
-
-    allocation        = np.array([stocks_pct, commodities_pct, cash_pct, real_estate_pct]) / 100
-    concentration_pen = max(0, max(allocation) - 0.80) * 0.5
-    cash_bonus        = min(cash_pct  / 25, 1.0) * 0.10
-    comm_bonus        = min(commodities_pct / 20, 1.0) * 0.08
-    allocation_score  = 0.5 + cash_bonus + comm_bonus - concentration_pen
-
-    behavior_map = {
-        "I panic-sold everything":    -0.15,
-        "I sold some, held some":     -0.05,
-        "I held and watched in pain":  0.00,
-        "I bought the dip":           +0.10,
-        "I wasn't invested yet":      0.00
-    }
-    age_map = {
-        "18 - 25":+0.05,"26 - 35":+0.03,"36 - 45":0.00,
-        "46 - 55":-0.05,"56 - 65":-0.10,"65+":    -0.15
-    }
-
-    raw_score   = ((1-stress_prob)*0.30 + country_modifier*0.20 +
-                   (1-demo_pressure)*0.15 + allocation_score*0.25 +
-                   (0.5+behavior_map.get(behavior,0))*0.10)
-    final_score = int(np.clip((raw_score + age_map.get(age_bracket,0))*100, 5, 98))
-
-    signal_scores = {
-        "Central bank language drift": int(min(signals["VIX_score"]*0.6 + stress_prob*40, 100)),
-        "Commodity stress index":      int(min(signals["Gold"]*0.5 + signals["Oil"]*0.5, 100)),
-        "Geopolitical contagion":      int(min(signals["fear_composite"]*0.7 + (1-country_modifier)*30, 100)),
-        "Demographic pressure":        int(demo_pressure*100),
-        "Retail capitulation risk":    int(min(stress_prob*100, 100))
-    }
-
-    archetype_map = {
-        "I panic-sold everything":    ("The Panic Seller",     "You exit at the worst moment. Pre-commitment rules are your fix."),
-        "I sold some, held some":     ("The Reluctant Holder", "You partially protect yourself but leave recovery gains on the table."),
-        "I held and watched in pain": ("The Anxious Holder",   "Emotional exits cost you 12% vs. systematic rebalancers."),
-        "I bought the dip":           ("The Contrarian",       "Highest survival rate — but only if you have the liquidity."),
-        "I wasn't invested yet":     ("The Observer",         "No crash trauma — but entry timing is your critical risk.")
-    }
-    label, desc = archetype_map.get(behavior, ("The Holder","Steady under pressure."))
-
-    return {
-        "score":score_label(final_score), "raw_score":final_score,
-        "stress_prob":round(stress_prob,3),
-        "signal_scores":signal_scores,
-        "archetype":label, "archetype_desc":desc
-    }
-
-def score_label(s):
-    if s >= 75: return (s, "Strong resilience", "green")
-    if s >= 55: return (s, "Moderate resilience", "orange")
-    if s >= 35: return (s, "Fragile", "red")
-    return (s, "High vulnerability", "red")
-
-def signal_bar(label, value, col):
-    color = "#E24B4A" if value>70 else "#EF9F27" if value>50 else "#1D9E75"
-    status = "High risk" if value>70 else "Elevated" if value>50 else "Stable"
-    col.markdown(f"""
-    <div style="margin-bottom:10px">
-        <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:3px">
-            <span>{label}</span>
-            <span style="color:{color};font-weight:500">{status} ({value})</span>
-        </div>
-        <div style="background:#f0f0f0;border-radius:4px;height:8px">
-            <div style="width:{value}%;background:{color};height:8px;border-radius:4px"></div>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
-
-# ── APP LAYOUT ──────────────────────────────────────────────────────────────
-
-st.markdown("## Will your financial life survive the next 10 years?")
-st.markdown("*30 seconds. No sign-up. Brutally honest.*")
+st.markdown('## Will your financial life survive the next 10 years?')
+st.markdown('*30 seconds. No sign-up. Brutally honest.*')
 st.divider()
 
-# SCREEN 1 — INPUT
-with st.form("input_form"):
-    col1, col2 = st.columns(2)
-    country     = col1.selectbox("Your country",
-                    ["Germany","United States","United Kingdom",
-                     "India","France","Japan","Brazil"])
-    age_bracket = col2.selectbox("Your age bracket",
-                    ["18 - 25","26 - 35","36 - 45","46 - 55","56 - 65","65+"])
+c1,c2=st.columns(2)
+country=c1.selectbox('Your country',['Germany','United States','United Kingdom','India','France','Japan','Brazil'])
+age=c2.selectbox('Your age bracket',['18 - 25','26 - 35','36 - 45','46 - 55','56 - 65','65+'],index=2)
+beh=st.selectbox('How did you feel during the 2022 market crash?',['I panic-sold everything','I sold some, held some','I held and watched in pain','I bought the dip','I was not invested yet'])
+st.selectbox('Biggest fear for the next decade?',['Inflation destroying my savings','A major stock market crash','Geopolitical war disrupting markets','AI making my skills worthless','Climate collapse hitting commodities'])
 
-    st.markdown("**How did you feel during the 2022 market crash?**")
-    behavior = st.selectbox("", [
-        "I panic-sold everything",
-        "I sold some, held some",
-        "I held and watched in pain",
-        "I bought the dip",
-        "I wasn't invested yet"
-    ])
+st.markdown('**Portfolio allocation — enter percentages below. Real estate is auto-calculated to keep total at exactly 100%.**')
 
-    st.markdown("**Portfolio allocation (%)**")
-    c1, c2, c3, c4 = st.columns(4)
-    stocks_pct      = c1.slider("Stocks / ETFs",    0, 100, 60, step=5)
-    commodities_pct = c2.slider("Commodities",       0, 100, 15, step=5)
-    cash_pct        = c3.slider("Cash / Bonds",      0, 100, 15, step=5)
-    real_estate_pct = c4.slider("Real estate",       0, 100, 10, step=5)
+n1,n2,n3=st.columns(3)
+s_val=n1.number_input('Stocks / ETFs %',min_value=0,max_value=100,value=60,step=5)
+co_val=n2.number_input('Commodities %',min_value=0,max_value=100,value=15,step=5)
+ca_val=n3.number_input('Cash / Bonds %',min_value=0,max_value=100,value=15,step=5)
+re_val=100-s_val-co_val-ca_val
 
-    st.markdown("**Biggest fear for the next decade**")
-    fear = st.selectbox("", [
-        "Inflation destroying my savings",
-        "A major stock market crash",
-        "Geopolitical war disrupting markets",
-        "AI making my skills worthless",
-        "Climate collapse hitting commodities"
-    ])
+ca2,cb2,cc2,cd2=st.columns(4)
+ca2.metric('Stocks',f'{s_val}%')
+cb2.metric('Commodities',f'{co_val}%')
+cc2.metric('Cash',f'{ca_val}%')
+cd2.metric('Real estate (auto)',f'{re_val}%')
 
-    submitted = st.form_submit_button(
-        "Calculate my Wealth Survival Score →",
-        use_container_width=True,
-        type="primary"
-    )
+if re_val<0:
+    st.error(f'Total is {s_val+co_val+ca_val}%. Reduce your inputs by {abs(re_val)}% to continue.')
+    valid=False
+else:
+    st.success(f'Total: 100% locked  |  Stocks {s_val}%  Commodities {co_val}%  Cash {ca_val}%  Real estate {re_val}%')
+    valid=True
 
-# SCREEN 2 — PROCESSING + RESULTS
-if submitted:
+st.divider()
+if st.button('Calculate my Wealth Survival Score',use_container_width=True,type='primary',disabled=not valid):
+    with st.spinner('Computing...'):
+        prog=st.progress(0,text='Fetching live data...')
+        time.sleep(0.3); prog.progress(30,text='Loading signals...')
+        sig=load_signals()
+        prog.progress(65,text='Running model...')
+        rf=load_rf()
+        prog.progress(90,text='Calculating score...')
+        res=compute(country,age,s_val,co_val,ca_val,re_val,beh,sig,rf)
+        prog.progress(100); time.sleep(0.2); prog.empty()
+
+    st.markdown(f'<div style="text-align:center;padding:2rem;border-radius:12px;border:1px solid #e0e0e0"><p style="font-size:11px;color:gray;text-transform:uppercase;letter-spacing:2px">Your wealth survival score</p><p style="font-size:84px;font-weight:700;color:{res["color"]};line-height:1;margin:0">{res["score"]}</p><p style="font-size:16px;color:gray;margin-top:6px">{res["label"]}</p></div>',unsafe_allow_html=True)
+    st.markdown('')
+    st.info(f'**{country} - {age} - {res["archetype"]}** - Market stress probability: **{res["stress"]}%**. {res["arch_desc"]}')
+    st.markdown('#### Signal breakdown')
+    for lbl,val in res['signals'].items(): bar(lbl,val)
+    st.markdown('---')
+    st.markdown(f'**Your investor archetype: {res["archetype"]}**')
+    st.markdown(res['arch_desc'])
     st.divider()
-
-    with st.spinner("Fetching live market signals..."):
-        progress = st.progress(0, text="Connecting to market data...")
-        time.sleep(0.5); progress.progress(20, text="Pulling VIX and commodity prices...")
-        signals = load_signals()
-        progress.progress(60, text="Running Random Forest model...")
-        rf = load_models()
-        progress.progress(80, text="Computing your personalised score...")
-        result  = compute_score(country, age_bracket, stocks_pct, commodities_pct,
-                                cash_pct, real_estate_pct, behavior, signals, rf)
-        progress.progress(100, text="Done.")
-        time.sleep(0.3)
-        progress.empty()
-
-    # SCREEN 3 — SCORE OUTPUT
-    score_val, score_text, score_color = result["score"]
-
-    st.markdown(f"""
-    <div style="text-align:center;padding:2rem;border-radius:12px;
-                border:1px solid #e0e0e0;margin-bottom:1rem">
-        <p style="font-size:12px;font-weight:500;color:gray;
-                  text-transform:uppercase;letter-spacing:2px;margin-bottom:8px">
-            Your wealth survival score
-        </p>
-        <p style="font-size:72px;font-weight:600;color:{'#1D9E75' if score_color=='green' else '#EF9F27' if score_color=='orange' else '#E24B4A'};
-                  line-height:1;margin:0">{score_val}</p>
-        <p style="font-size:16px;margin-top:8px;color:gray">{score_text}</p>
-    </div>
-    """, unsafe_allow_html=True)
-
-    # verdict
-    stress_pct = int(min(result["stress_prob"] * 100 * 1.35 + 15, 99))
-    st.info(
-        f"**{country} · {age_bracket} · {result['archetype']}** — "
-        f"The model puts current market stress probability at **{stress_pct}%**. "
-        f"{result['archetype_desc']}"
-    )
-
-    # signal breakdown
-    st.markdown("#### Signal breakdown")
-    for label, value in result["signal_scores"].items():
-        signal_bar(label, value, st)
-
-    # archetype
-    st.markdown("---")
-    st.markdown(f"**Your investor archetype: {result['archetype']}**")
-    st.markdown(result["archetype_desc"])
-
-    # SCREEN 4 — ACTION PLAN
-    st.divider()
-    st.markdown("#### Your action plan to improve your score")
-
-    steps = [
-        ("Raise cash buffer to 20–25%",
-         "Short-duration bonds or money market fund. Dry powder for dislocation events.",
-         "+5–6 pts",
-         "The model's strongest predictor of survival is liquidity availability during stress. "
-         "Target 6 months of expenses in cash plus 10% of portfolio in a money market fund."),
-        ("Rebalance commodities to 20–22% — gold + copper tilt",
-         "Gold hedges central bank uncertainty directly. Copper tracks industrial cycles.",
-         "+4–5 pts",
-         "Split: 60% gold ETF, 40% copper ETF. Gold performs best when central bank "
-         "language drift accelerates — which the model is detecting right now."),
-        ("Diversify equities globally — reduce home country concentration",
-         "Shift 50% of equity allocation to MSCI World / ACWI ETF.",
-         "+3–4 pts",
-         "Most retail investors are overweight their home market without realising it. "
-         "A simple MSCI World ETF reduces country-specific risk immediately."),
-        ("Write your pre-commitment rebalancing rule today",
-         "Decide your buy levels now — before the next crash arrives.",
-         "+4–5 pts",
-         "Write one sentence: if the market falls X%, I will invest Y from my cash buffer. "
-         "Research shows pre-commitment rules reduce panic-exit frequency by 40%."),
-        ("Add a small tail hedge — 3–5% of portfolio",
-         "Asymmetric protection that lets you hold everything else through turbulence.",
-         "+3–4 pts",
-         "A small put spread or volatility ETF pays off in the scenario you fear most. "
-         "The psychological value — permission to hold — is as important as the financial one.")
-    ]
-
-    for i, (title, subtitle, gain, detail) in enumerate(steps):
-        with st.expander(f"Step {i+1}: {title}  —  {gain}"):
-            st.markdown(f"*{subtitle}*")
-            st.markdown(detail)
-
-    # score projection chart
-    st.markdown("#### Score projection after each step")
-    labels  = ["Now", "After step 1", "After step 2", "After step 3", "After step 4", "After step 5"]
-    scores  = [score_val,
-               min(score_val+6, 98),
-               min(score_val+11,98),
-               min(score_val+15,98),
-               min(score_val+20,98),
-               min(score_val+24,98)]
-    colors  = ["#E24B4A" if s<55 else "#EF9F27" if s<75 else "#1D9E75" for s in scores]
-
-    fig = go.Figure(go.Bar(
-        x=labels, y=scores,
-        marker_color=colors,
-        text=[str(s) for s in scores],
-        textposition="outside"
-    ))
-    fig.update_layout(
-        yaxis=dict(range=[0,105], title="Score"),
-        template="plotly_white",
-        height=350,
-        margin=dict(t=20)
-    )
-    st.plotly_chart(fig, use_container_width=True)
-
-    st.caption("Disclaimer: This is an educational tool, not financial advice. "
-               "Past market regimes do not guarantee future outcomes.")
+    st.markdown('#### Your action plan')
+    steps=[
+        ('Raise cash buffer to 20-25%','Short-duration bonds or money market fund.','+5-6 pts','Strongest predictor of survival is liquidity during stress. Target 6 months expenses in cash plus 10% in a money market fund.'),
+        ('Rebalance commodities to 20-22% with gold and copper tilt','Gold hedges central bank uncertainty. Copper tracks industrial cycles.','+4-5 pts','60% gold ETF, 40% copper ETF. Gold performs best when central bank uncertainty accelerates.'),
+        ('Diversify equities globally','Shift 50% of equities to MSCI World ETF.','+3-4 pts','Most retail investors are overweight their home market. MSCI World reduces country risk immediately.'),
+        ('Write your pre-commitment rebalancing rule today','Decide your buy levels before the next crash.','+4-5 pts','One sentence: if market falls X%, I invest Y from my cash buffer. Reduces panic-exit frequency by 40%.'),
+        ('Add a small tail hedge 3-5%','Asymmetric protection.','+3-4 pts','A put spread or volatility ETF pays off in the scenario you fear most.')]
+    for i,(t,sub,g,d) in enumerate(steps):
+        with st.expander(f'Step {i+1}: {t}  |  {g}'): st.markdown(f'*{sub}*'); st.markdown(d)
+    sc=res['score']
+    scores=[sc,min(sc+6,98),min(sc+11,98),min(sc+15,98),min(sc+20,98),min(sc+24,98)]
+    cols=['#E24B4A' if x<55 else '#EF9F27' if x<75 else '#1D9E75' for x in scores]
+    fig=go.Figure(go.Bar(x=['Now','Step 1','Step 2','Step 3','Step 4','Step 5'],y=scores,
+                         marker_color=cols,text=[str(x) for x in scores],textposition='outside'))
+    fig.update_layout(yaxis=dict(range=[0,105]),template='plotly_white',height=300,margin=dict(t=10,b=10))
+    st.plotly_chart(fig,use_container_width=True)
+    st.caption('Educational tool only. Not financial advice.')
