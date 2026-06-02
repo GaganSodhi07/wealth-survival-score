@@ -53,9 +53,9 @@ def compute(country,age,s,co,ca,re,beh,sig,rf):
     demo=dp.get(country,0.5)
     ms=(1-sp)*100; cs=cm*100; ds=(1-demo)*100
     mx=max(s,co,ca,re)/100
-    if mx>0.90: als=10
-    elif mx>0.80: als=28
-    elif ca<5: als=32
+    if mx>0.90: als=5
+    elif mx>0.80: als=15
+    elif ca<5: als=28
     elif ca>=20 and co>=15: als=95
     elif ca>=15 and co>=10: als=80
     elif ca>=10 and co>=5: als=65
@@ -76,12 +76,12 @@ def compute(country,age,s,co,ca,re,beh,sig,rf):
         'Geopolitical contagion':int(min(sig['fear_composite']*0.7+(1-cm)*30,100)),
         'Demographic pressure':int(demo*100),
         'Retail capitulation risk':int(round(sp*100))}
-    contrarian_desc = 'Highest survival rate - and your {:.0f}% cash gives you the firepower to execute.'.format(ca) if ca>=15 else 'Highest survival rate - but your {:.0f}% cash may not be enough when the dip arrives.'.format(ca)
-    anxious_desc = 'You hold through crashes - your {:.0f}% cash buffer helps but pre-commitment rules will stop emotional exits.'.format(ca) if ca>=15 else 'Emotional exits cost you 12% vs systematic rebalancers - and your low cash leaves you exposed.'
+    contrarian_desc='Highest survival rate - and your {:.0f}% cash gives you the firepower to execute.'.format(ca) if ca>=15 else 'Highest survival rate - but your {:.0f}% cash may not be enough when the dip arrives.'.format(ca)
+    anxious_desc='You hold through crashes - your {:.0f}% cash buffer helps but pre-commitment rules will stop emotional exits.'.format(ca) if ca>=15 else 'Emotional exits cost you 12% vs systematic rebalancers - and your low cash leaves you exposed.'
     am={'I panic-sold everything':('The Panic Seller','You exit at the worst moment. Build a cash buffer of at least 20% as your psychological anchor.'),
-        'I sold some, held some':('The Reluctant Holder','You partially protect yourself but leave recovery gains on the table. A written rebalancing rule fixes this.'),
-        'I held and watched in pain':('The Anxious Holder', anxious_desc),
-        'I bought the dip':('The Contrarian', contrarian_desc),
+        'I sold some, held some':('The Reluctant Holder','You partially protect yourself but leave recovery gains on the table.'),
+        'I held and watched in pain':('The Anxious Holder',anxious_desc),
+        'I bought the dip':('The Contrarian',contrarian_desc),
         'I was not invested yet':('The Observer','No crash trauma - but entry timing is your critical risk. Define your entry rules now.')}
     al,ad=am.get(beh,('The Holder','Steady under pressure.'))
     return {'score':score,'label':lbl,'color':col,'stress':int(round(sp*100)),'signals':ss,'archetype':al,'arch_desc':ad}
@@ -101,8 +101,7 @@ age=c2.selectbox('Your age bracket',['18 - 25','26 - 35','36 - 45','46 - 55','56
 beh=st.selectbox('How did you feel during the 2022 market crash?',['I panic-sold everything','I sold some, held some','I held and watched in pain','I bought the dip','I was not invested yet'])
 st.selectbox('Biggest fear for the next decade?',['Inflation destroying my savings','A major stock market crash','Geopolitical war disrupting markets','AI making my skills worthless','Climate collapse hitting commodities'])
 
-st.markdown('**Portfolio allocation — enter percentages below. Real estate is auto-calculated to keep total at exactly 100%.**')
-
+st.markdown('**Portfolio allocation — enter percentages. Real estate auto-calculates to keep total at 100%.**')
 n1,n2,n3=st.columns(3)
 s_val=n1.number_input('Stocks / ETFs %',min_value=0,max_value=100,value=60,step=5)
 co_val=n2.number_input('Commodities %',min_value=0,max_value=100,value=15,step=5)
@@ -116,7 +115,7 @@ cc2.metric('Cash',f'{ca_val}%')
 cd2.metric('Real estate (auto)',f'{re_val}%')
 
 if re_val<0:
-    st.error(f'Total is {s_val+co_val+ca_val}%. Reduce your inputs by {abs(re_val)}% to continue.')
+    st.error(f'Total is {s_val+co_val+ca_val}%. Reduce inputs by {abs(re_val)}% to continue.')
     valid=False
 else:
     st.success(f'Total: 100% locked  |  Stocks {s_val}%  Commodities {co_val}%  Cash {ca_val}%  Real estate {re_val}%')
@@ -145,73 +144,32 @@ if st.button('Calculate my Wealth Survival Score',use_container_width=True,type=
     st.divider()
     st.markdown('#### Your personalised action plan')
     steps=[]
-
-    # step 1: cash — only show if cash is low
-    if ca_val < 15:
-        steps.append(('Raise your cash buffer from {}% to at least 20%'.format(ca_val),
-            'You are under-protected for a liquidity shock.','+5-6 pts',
-            'Your current {}% cash is below the survival threshold. Target 20-25% in short-duration bonds or a money market fund. This is the single highest-impact change you can make.'.format(ca_val)))
+    if ca_val<15:
+        steps.append(('Raise your cash buffer from {}% to at least 20%'.format(ca_val),'You are under-protected for a liquidity shock.','+5-6 pts','Your current {}% cash is below the survival threshold. Target 20-25% in short-duration bonds or a money market fund.'.format(ca_val)))
     else:
-        steps.append(('Maintain your strong cash buffer of {}%'.format(ca_val),
-            'Your liquidity position is healthy.','+2 pts',
-            'Your {}% cash buffer is above the 20% safety threshold. Keep it here and resist the urge to deploy it all during the next rally.'.format(ca_val)))
-
-    # step 2: commodities — only show rebalance if under or over
-    if co_val < 10:
-        steps.append(('Add commodity exposure — currently only {}%'.format(co_val),
-            'You have almost no inflation or geopolitical hedge.','+4-5 pts',
-            'Your {}% commodity allocation leaves you exposed to energy and food shocks. Target 15-20% split between gold ETF (60%) and copper ETF (40%).'.format(co_val)))
-    elif co_val > 30:
-        steps.append(('Reduce commodity concentration from {}% to 20-22%'.format(co_val),
-            'Over-concentration in commodities increases volatility.','-2 pts risk',
-            'Your {}% commodities allocation is above optimal. Trim to 20-22% and redeploy the excess into a globally diversified equity ETF.'.format(co_val)))
+        steps.append(('Maintain your strong cash buffer of {}%'.format(ca_val),'Your liquidity position is healthy.','+2 pts','Your {}% cash buffer is above the 20% safety threshold. Keep it here and resist the urge to deploy it all during the next rally.'.format(ca_val)))
+    if co_val<10:
+        steps.append(('Add commodity exposure — currently only {}%'.format(co_val),'You have almost no inflation or geopolitical hedge.','+4-5 pts','Your {}% commodity allocation leaves you exposed. Target 15-20% split between gold ETF (60%) and copper ETF (40%).'.format(co_val)))
+    elif co_val>30:
+        steps.append(('Reduce commodity concentration from {}% to 20-22%'.format(co_val),'Over-concentration in commodities increases volatility.','-2 pts risk','Trim to 20-22% and redeploy the excess into a globally diversified equity ETF.'))
     else:
-        steps.append(('Your commodity allocation of {}% is well positioned'.format(co_val),
-            'Good inflation and geopolitical hedge in place.','+2 pts',
-            'Ensure your commodity exposure is split between gold (inflation hedge) and copper (industrial cycle exposure) rather than concentrated in one commodity.'))
-
-    # step 3: equities — only show if stocks > 70%
-    if s_val > 70:
-        steps.append(('Reduce equity concentration from {}% — diversify globally'.format(s_val),
-            'Heavy equity concentration amplifies crash exposure.','+3-4 pts',
-            'Your {}% equity allocation is high. Shift at least half to an MSCI World ETF to reduce home-country bias and sector concentration. Every 10% you move reduces your crash drawdown by roughly 2-3%.'.format(s_val)))
-    elif s_val < 20:
-        steps.append(('Consider increasing equity exposure from {}%'.format(s_val),
-            'Very low equity allocation limits long-term growth.','+2-3 pts',
-            'Your {}% equity allocation may be too conservative for long-term wealth survival. Consider a globally diversified MSCI World ETF for the equity portion.'.format(s_val)))
+        steps.append(('Your commodity allocation of {}% is well positioned'.format(co_val),'Good inflation and geopolitical hedge in place.','+2 pts','Ensure split between gold (inflation hedge) and copper (industrial cycle exposure).'))
+    if s_val>70:
+        steps.append(('Reduce equity concentration from {}% — diversify globally'.format(s_val),'Heavy equity concentration amplifies crash exposure.','+3-4 pts','Shift at least half to an MSCI World ETF to reduce home-country bias.'))
+    elif s_val<20:
+        steps.append(('Consider increasing equity exposure from {}%'.format(s_val),'Very low equity allocation limits long-term growth.','+2-3 pts','Consider a globally diversified MSCI World ETF for the equity portion.'))
     else:
-        steps.append(('Your equity allocation of {}% is balanced'.format(s_val),
-            'Ensure it is globally diversified, not home-country concentrated.','+1-2 pts',
-            'Good equity level. Make sure at least 50% is in a global ETF like MSCI World rather than concentrated in your home market index.'))
-
-    # step 4: behavior — always relevant but personalised
-    if beh == 'I panic-sold everything':
-        steps.append(('Write a panic-prevention rule before the next crash',
-            'Your archetype is the highest risk for permanent capital loss.','+4-5 pts',
-            'You panic-sold before. Write this sentence now and save it: If my portfolio drops 20%, I will NOT sell. I will buy X amount from my cash buffer instead. Signing a pre-commitment contract with yourself reduces panic-exit probability by 40%.'))
-    elif beh == 'I held and watched in pain':
-        steps.append(('Convert passive holding into an active rebalancing rule',
-            'Watching in pain without a plan leads to eventual capitulation.','+3-4 pts',
-            'You held last time — good. But passive holding under stress eventually breaks. Write a rebalancing trigger: if portfolio drops 15%, I buy X from cash. This transforms anxiety into action and protects your recovery.'))
-    elif beh == 'I bought the dip':
-        steps.append(('Pre-define your dip-buying levels now while markets are calm',
-            'Contrarians win only when they execute — not just intend.','+2-3 pts',
-            'You bought the dip before — the highest survival archetype. Now pre-define your levels: I will deploy 25% of my cash buffer at -15%, another 25% at -25%, and the final 50% at -35%. Written rules prevent hesitation when the moment arrives.'))
+        steps.append(('Your equity allocation of {}% is balanced'.format(s_val),'Ensure it is globally diversified.','+1-2 pts','Make sure at least 50% is in a global ETF rather than concentrated in your home market.'))
+    if beh=='I panic-sold everything':
+        steps.append(('Write a panic-prevention rule before the next crash','Your archetype is the highest risk for permanent capital loss.','+4-5 pts','Write this now: If my portfolio drops 20%, I will NOT sell. I will buy X from my cash buffer instead.'))
+    elif beh=='I bought the dip':
+        steps.append(('Pre-define your dip-buying levels now','Contrarians win only when they execute.','+2-3 pts','Deploy 25% of cash at -15%, another 25% at -25%, final 50% at -35%. Written rules prevent hesitation.'))
     else:
-        steps.append(('Write your pre-commitment rebalancing rule today',
-            'Decide your buy levels before the next crash.','+3-4 pts',
-            'One sentence: if market falls X%, I invest Y from my cash buffer. Pre-commitment reduces panic-exit frequency by 40%.'))
-
-    # step 5: tail hedge — only if high stress detected
-    if res['stress'] > 70:
-        steps.append(('Add a tail hedge — market stress is currently at {}%'.format(res['stress']),
-            'Current signals justify asymmetric downside protection.','+3-4 pts',
-            'With market stress at {}%, a small 3-5% allocation to a put spread on your main index or a volatility ETF gives you insurance precisely when you need it. The psychological permission to hold everything else is as valuable as the payout.'.format(res['stress'])))
+        steps.append(('Write your pre-commitment rebalancing rule today','Decide your buy levels before the next crash.','+3-4 pts','If market falls X%, I invest Y from my cash buffer. Reduces panic-exit frequency by 40%.'))
+    if res['stress']>60:
+        steps.append(('Add a tail hedge — stress currently at {}%'.format(res['stress']),'Current signals justify downside protection.','+3-4 pts','A 3-5% put spread or volatility ETF pays off in the scenario you fear most.'))
     else:
-        steps.append(('Monitor tail risk — stress currently moderate at {}%'.format(res['stress']),
-            'No immediate hedge urgency but worth watching.','+1-2 pts',
-            'Current market stress at {}% does not yet justify an expensive tail hedge. Set a personal alert: if VIX crosses 30, allocate 3-5% to downside protection.'.format(res['stress'])))
-
+        steps.append(('Monitor tail risk — stress moderate at {}%'.format(res['stress']),'No immediate hedge urgency.','+1-2 pts','Set an alert: if VIX crosses 30, allocate 3-5% to downside protection.'))
     for i,(t,sub,g,d) in enumerate(steps):
         with st.expander(f'Step {i+1}: {t}  |  {g}'): st.markdown(f'*{sub}*'); st.markdown(d)
     sc=res['score']
